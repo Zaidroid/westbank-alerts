@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/i18n";
+import { motion } from "framer-motion";
 
 interface BottomNavProps {
   activeTab: "home" | "news" | "checkpoints" | "map" | "profile";
@@ -40,33 +41,41 @@ export function BottomNav({ activeTab, onTabChange, badges }: BottomNavProps) {
           <button
             key={id}
             onClick={() => onTabChange(id)}
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 relative transition-all duration-300 tap-active:scale-95"
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 relative transition-all duration-200 active:scale-90"
             style={{ minHeight: 70 }}
           >
             <div className="relative flex items-center justify-center w-12 h-8">
               {isActive && (
-                <div className="absolute inset-0 bg-secondary/20 rounded-full scale-110 transition-transform shadow-[0_0_15px_rgba(254,179,0,0.15)]" />
+                <motion.div
+                  layoutId="bottomnav-active-pill"
+                  className="absolute inset-0 bg-secondary/20 rounded-full shadow-[0_0_15px_rgba(254,179,0,0.15)]"
+                  transition={{ type: "spring", damping: 20, stiffness: 250 }}
+                />
               )}
-              
-              <span 
+
+              <span
                 className={cn(
-                  "material-symbols-outlined text-[26px] z-10 transition-colors",
-                  isActive ? "filled text-secondary glow-secondary" : "text-on-surface-variant hover:text-on-surface"
+                  "material-symbols-outlined text-[26px] z-10 transition-colors duration-200",
+                  isActive ? "filled text-secondary" : "text-on-surface-variant hover:text-on-surface"
                 )}
               >
                 {icon}
               </span>
 
               {badgeCount != null && badgeCount > 0 && (
-                <span className="absolute top-[-2px] end-[-2px] z-20 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-error font-headline text-[9px] font-bold flex items-center justify-center leading-none border-2 border-background glow-error shadow-sm">
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute top-[-2px] end-[-2px] z-20 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-error font-headline text-[9px] font-bold flex items-center justify-center leading-none border-2 border-background shadow-sm"
+                >
                   {badgeCount > 99 ? "99+" : badgeCount}
-                </span>
+                </motion.span>
               )}
             </div>
-            
-            <span 
+
+            <span
               className={cn(
-                "text-[10px] font-label font-bold tracking-wider uppercase transition-colors",
+                "text-[10px] font-label font-bold tracking-wider uppercase transition-colors duration-200",
                 isActive ? "text-secondary" : "text-on-surface-variant"
               )}
             >

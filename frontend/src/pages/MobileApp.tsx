@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useLang } from "@/lib/i18n";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useCheckpoints } from "@/hooks/useCheckpoints";
@@ -7,15 +7,14 @@ import { useSavedRoutes } from "@/hooks/useSavedRoutes";
 import { useActiveSirens } from "@/hooks/useAlerts";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useGeolocation } from "@/hooks/useGeolocation";
-import { isAreaOnRoute } from "@/lib/routes";
 import { getAllRoutes } from "@/lib/routes";
 import type { Alert, Checkpoint } from "@/lib/api/types";
+import type { Route } from "@/lib/routes";
 
 // Setup and Overlays
 import { SplashScreen } from "@/components/mobile/SplashScreen";
 import { OnboardingFlow, hasCompletedOnboarding } from "@/components/mobile/OnboardingFlow";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
-import { DetailPanel } from "@/components/DetailPanel";
 
 // Sentinel Design System Components
 import { SentinelLayout, type TabId } from "@/components/sentinel/SentinelLayout";
@@ -27,34 +26,33 @@ import { SentinelNavigation } from "@/components/sentinel/SentinelNavigation";
 import { SentinelProfile } from "@/components/sentinel/SentinelProfile";
 
 import { KpiDetailSheet } from "@/components/mobile/KpiDetailSheet";
+import { AnimatePresence } from "framer-motion";
 
 export default function MobileApp() {
   const { t } = useLang();
   const [splashDone, setSplashDone] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(() => hasCompletedOnboarding());
-  
+
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [isNavigating, setIsNavigating] = useState(false);
   const [activePill, setActivePill] = useState<any>(null);
-  
-  const [selectedItem, setSelectedItem] = useState<Alert | Checkpoint | null>(null);
+  const prevTabRef = useRef<TabId>("home");
+
+  // Selected checkpoint or alert for detail view (shown as bottom sheet from checkpoint cards)
   const [selectedCheckpointKey, setSelectedCheckpointKey] = useState<string | null>(null);
 
   const { alerts, checkpointUpdates, connectionStatus } = useRealtime();
   const { data: checkpointsData } = useCheckpoints();
   const { activeRoute, setActiveRoute } = useActiveRoute();
+  const { savedRoutes, saveRoute, isRouteSaved } = useSavedRoutes();
   const { location: userLocation, requestPermission: requestLocation, startWatching, stopWatching } = useGeolocation();
   const { requestPermission: requestNotifPermission } = usePushNotifications(alerts);
 
   const checkpoints = checkpointsData?.checkpoints ?? [];
+  const allRoutes = useMemo(() => getAllRoutes(), []);
 
-  const handleSelectItem = useCallback((item: Alert | Checkpoint) => {
-    setSelectedItem(item);
-    setSelectedCheckpointKey("canonical_key" in item ? item.canonical_key : null);
-  }, []);
-
-  // Dynamically start and stop geolocation tracking to save battery
-  // but ensure live map and navigation have continuous blue-dot tracking.
+  // --- Geolocation lifecycle ---
+  // Track when map or navigation is active and needs live GPS
   useEffect(() => {
     if (activeTab === "map" || isNavigating) {
       startWatching();
@@ -63,10 +61,10 @@ export default function MobileApp() {
     }
   }, [activeTab, isNavigating, startWatching, stopWatching]);
 
-  // Use the active sirens hook for a reliable, live-only badge count
+  // --- Badge counts ---
   const { data: activeSirensData } = useActiveSirens();
   const criticalCount = activeSirensData?.count || 0;
-  
+
   const closedCount = useMemo(
     () => checkpoints.filter(cp => cp.status === "closed" || cp.status === "military").length,
     [checkpoints]
@@ -75,12 +73,55 @@ export default function MobileApp() {
   const routeIssueCount = useMemo(() => {
     if (!activeRoute) return 0;
     const routeKeys = new Set(activeRoute.checkpoints.map(cp => cp.canonical_key));
-    const blocked = checkpoints.filter(cp =>
+    return checkpoints.filter(cp =>
       routeKeys.has(cp.canonical_key) &&
       (cp.status === "closed" || cp.status === "congested" || cp.status === "military")
     ).length;
-    return blocked;
   }, [activeRoute, checkpoints]);
+
+  // --- Navigation flow ---
+  const handleStartNavigation = useCallback(() => {
+    if (activeRoute) {
+      saveRoute(activeRoute); // auto-save to recent routes
+      setIsNavigating(true);
+    }
+  }, [activeRoute, saveRoute]);
+
+  const handleEndNavigation = useCallback(() => {
+    setIsNavigating(false);
+  }, []);
+
+  const handleReRoute = useCallback(() => {
+    // Go back to map tab with route selection visible so user can pick a new route
+    setIsNavigating(false);
+    setActiveTab("map");
+  }, []);
+
+  // When clicking a checkpoint on the map or in a card — navigate to map and highlight
+  const handleCheckpointClick = useCallback((c: Checkpoint) => {
+    setSelectedCheckpointKey(c.canonical_key);
+  }, []);
+
+  const handleAlertClick = useCallback((a: Alert) => {
+    // Alerts don't have a detail panel mapped here — SentinelNews handles its own detail
+  }, []);
+
+  // Tab change with history tracking for animations
+  const handleTabChange = useCallback((tab: TabId) => {
+    prevTabRef.current = activeTab;
+    setActiveTab(tab);
+  }, [activeTab]);
+
+  // Navigate to map with a specific route pre-selected
+  const handleNavigateToRoute = useCallback((route: Route) => {
+    setActiveRoute(route);
+    setActiveTab("map");
+  }, [setActiveRoute]);
+
+  // Navigate to map from other tabs
+  const handleNavigateMap = useCallback(() => {
+    setActiveTab("map");
+  }, []);
 
   const locationName = t.appTitle;
 
@@ -101,7 +142,7 @@ export default function MobileApp() {
       {splashDone && onboardingDone && (
         <SentinelLayout
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={handleTabChange}
           locationName={locationName}
           connectionStatus={connectionStatus}
           badges={{
@@ -110,7 +151,8 @@ export default function MobileApp() {
             map: routeIssueCount,
           }}
           onSosPress={() => {
-            alert("SOS: Emergency dispatch initiated locally.");
+            // Vibrate for SOS
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
           }}
           onPillPress={setActivePill}
         >
@@ -119,23 +161,21 @@ export default function MobileApp() {
               alerts={alerts}
               checkpoints={checkpoints}
               checkpointUpdates={checkpointUpdates}
-              onNavigateMap={() => setActiveTab("map")}
-              onExploreCheckpoints={() => setActiveTab("checkpoints")}
-              onViewAlerts={() => setActiveTab("news")}
+              onNavigateMap={handleNavigateMap}
+              onExploreCheckpoints={() => handleTabChange("checkpoints")}
+              onViewAlerts={() => handleTabChange("news")}
             />
           )}
 
           {activeTab === "news" && (
-            <SentinelNews
-              alerts={alerts}
-            />
+            <SentinelNews alerts={alerts} />
           )}
 
           {activeTab === "checkpoints" && (
             <SentinelCheckpoints
               checkpoints={checkpoints}
               checkpointUpdates={checkpointUpdates}
-              onNavigateMap={() => setActiveTab("map")}
+              onNavigateMap={handleNavigateMap}
             />
           )}
 
@@ -145,18 +185,16 @@ export default function MobileApp() {
               checkpoints={checkpoints}
               checkpointUpdates={checkpointUpdates}
               userLocation={userLocation}
-              routes={getAllRoutes()}
+              routes={allRoutes}
+              savedRoutes={savedRoutes}
               activeRoute={activeRoute}
               onSelectRoute={setActiveRoute}
-              onStartNavigation={() => {
-                // Ensure there's a route selected
-                if (!activeRoute && getAllRoutes().length > 0) {
-                  setActiveRoute(getAllRoutes()[0]);
-                }
-                setIsNavigating(true);
-              }}
-              onCheckpointClick={handleSelectItem}
-              onAlertClick={handleSelectItem}
+              onSaveRoute={saveRoute}
+              isRouteSaved={isRouteSaved}
+              onStartNavigation={handleStartNavigation}
+              onCheckpointClick={handleCheckpointClick}
+              onAlertClick={handleAlertClick}
+              connectionStatus={connectionStatus}
             />
           )}
 
@@ -170,22 +208,22 @@ export default function MobileApp() {
         </SentinelLayout>
       )}
 
-      {/* Global Overlays */}
-      {isNavigating && activeRoute && (
-        <SentinelNavigation
-          activeRoute={activeRoute}
-          checkpoints={checkpoints}
-          alerts={alerts}
-          userLocation={userLocation}
-          onEndNavigation={() => setIsNavigating(false)}
-          onReRoute={() => setIsNavigating(false)}
-        />
-      )}
-      <DetailPanel
-        item={selectedItem}
-        checkpointKey={selectedCheckpointKey}
-        onClose={() => { setSelectedItem(null); setSelectedCheckpointKey(null); }}
-      />
+      {/* Navigation overlay */}
+      <AnimatePresence>
+        {isNavigating && activeRoute && (
+          <SentinelNavigation
+            activeRoute={activeRoute}
+            checkpoints={checkpoints}
+            alerts={alerts}
+            checkpointUpdates={checkpointUpdates}
+            userLocation={userLocation}
+            onEndNavigation={handleEndNavigation}
+            onReRoute={handleReRoute}
+            connectionStatus={connectionStatus}
+          />
+        )}
+      </AnimatePresence>
+
       <KpiDetailSheet
         type={activePill}
         onClose={() => setActivePill(null)}
