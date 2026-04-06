@@ -15,7 +15,6 @@ from datetime import datetime
 from typing import Callable, List, Optional, Set
 
 from telethon import TelegramClient
-from telethon.sessions import StringSession
 from telethon.tl.types import ChannelParticipantsAdmins
 
 from .classifier import classify, is_security_relevant, classify_wb_operational
@@ -272,14 +271,8 @@ async def start():
         log.warning("Telegram credentials not set. Monitor disabled.")
         return
 
-    # Use StringSession if provided (cloud/serverless), else fall back to file session
-    session = (
-        StringSession(settings.TELEGRAM_SESSION_STRING)
-        if settings.TELEGRAM_SESSION_STRING
-        else settings.session_path
-    )
     client = TelegramClient(
-        session,
+        settings.session_path,
         settings.TELEGRAM_API_ID,
         settings.TELEGRAM_API_HASH,
     )
@@ -345,10 +338,43 @@ async def start():
     )
 
     _cycle_count = 0
+    _consecutive_errors = 0
     while True:
         _cycle_count += 1
+
+        # Auto-reconnect if Telegram connection dropped
+        if not client.is_connected():
+            log.warning("Telegram disconnected — reconnecting...")
+            try:
+                await client.connect()
+                _consecutive_errors = 0
+                log.info("Telegram reconnected successfully")
+            except Exception as e:
+                log.error(f"Reconnect failed: {e}. Retrying in 30s...")
+                await asyncio.sleep(30)
+                continue
+
         for username, (entity, is_cp) in channel_map.items():
-            await _poll_channel(entity, username, last_id, is_cp)
+            result = await _poll_channel(entity, username, last_id, is_cp)
+            if result == 0 and not client.is_connected():
+                _consecutive_errors += 1
+            else:
+                _consecutive_errors = 0
+
+        # Force reconnect after 10 consecutive failed cycles
+        if _consecutive_errors >= 10:
+            log.warning(f"[RECONNECT] {_consecutive_errors} failed cycles — forcing reconnect")
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            try:
+                await client.connect()
+                _consecutive_errors = 0
+                log.info("Telegram force-reconnected successfully")
+            except Exception as e:
+                log.error(f"Force reconnect failed: {e}")
+
         # Heartbeat log every 60 cycles (~5 minutes)
         if _cycle_count % 60 == 0:
             log.info(
