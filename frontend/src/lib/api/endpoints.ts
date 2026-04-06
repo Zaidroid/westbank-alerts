@@ -196,5 +196,5 @@ export interface ActiveSirensResponse {
  * Use for the real-time warning banner ONLY.
  */
 export async function getActiveSirens(minutes = 30): Promise<ActiveSirensResponse> {
-  return apiClient.get<ActiveSirensResponse>(`/alerts/sirens?minutes=${minutes}`);
+  return apiClient.get<ActiveSirensResponse>(`/sirens?minutes=${minutes}`);
 }

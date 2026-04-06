@@ -419,7 +419,7 @@ async def active_alerts(
     return AlertResponse(alerts=alerts, total=total, page=1, per_page=200)
 
 
-@app.get("/alerts/sirens", tags=["alerts"])
+@app.get("/sirens", tags=["alerts"])
 async def active_sirens(
     minutes: int = Query(30, ge=5, le=120,
                          description="Active siren window in minutes (default 30)"),

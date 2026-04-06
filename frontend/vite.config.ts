@@ -94,6 +94,10 @@ export default defineConfig({
         target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
+      '/sirens': {
+        target: 'http://192.168.0.118:8080',
+        changeOrigin: true,
+      },
       '/checkpoints/ws': {
         target: 'http://192.168.0.118:8080',
         ws: true,
