@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    container_name: westbank-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      # Add your Telegram credentials
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+      - TELEGRAM_PHONE=${TELEGRAM_PHONE}
+      - TELEGRAM_SESSION=wb_alerts
+      # Channels
+      - CHECKPOINT_CHANNEL_ID=${CHECKPOINT_CHANNEL_ID}
+      - ALERT_CHANNEL_ID=${ALERT_CHANNEL_ID}
+      # Monitoring
+      - MONITOR_INTERVAL=5
+      - DEDUP_WINDOW_HOURS=24
+      # CORS
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/session:/app/session
+    networks:
+      - westbank
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: westbank-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://backend:8000
+      - VITE_API_WSS_URL=ws://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - westbank
+
+networks:
+  westbank:
+    driver: bridge
