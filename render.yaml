@@ -1,0 +1,42 @@
+## Render.com deployment — free tier, no credit card required
+## Connect this repo at https://dashboard.render.com/new/web
+## Required secrets: set in Render dashboard (not here)
+
+services:
+  - type: web
+    name: wb-alerts-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+
+    disk:
+      name: wb-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DB_PATH
+        value: /data/alerts.db
+      - key: TELEGRAM_SESSION_DIR
+        value: /data/session
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_PHONE
+        sync: false
+      - key: TELEGRAM_SESSION_STRING
+        sync: false
+      - key: TELEGRAM_CHANNELS
+        sync: false
+      - key: CHECKPOINT_CHANNELS
+        sync: false
+      - key: API_SECRET_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
