@@ -751,15 +751,66 @@ def is_security_relevant(text: str) -> bool:
     return _has_attack_verb(normed)
 
 
+
+# ── Active / past tense detection ─────────────────────────────────────────────
+# These phrases indicate the message is about a past completed event, not live/ongoing
+
+PAST_TENSE_MARKERS = [
+    "امس", "أمس", "الماضي", "الاسبوع الماضي", "الشهر الماضي",
+    "في وقت سابق", "في وقت سابق اليوم",
+    "أعلنت قوات", "أفادت مصادر بأن",
+    "كشفت مصادر", "استشهد أمس",
+    "سقط امس", "وقعت أمس", "حدثت أمس",
+]
+PAST_TENSE_MARKERS = [_normalize(p) for p in PAST_TENSE_MARKERS]
+
+# Explicit "NOW / ONGOING" siren phrases — very strong signal
+ACTIVE_SIREN_PHRASES = [
+    "صافرات الان", "صافرات الإنذار الان", "صافرات الانذار الان",
+    "انذار الان", "إنذار الآن", "انذار فوري",
+    "صافرات في", "دوت صافرات", "صافرات تدوي",
+    "انذارات في", "رشقة صاروخية باتجاه",
+    "صواريخ باتجاه", "صاروخ باتجاه الضفة",
+    "تحذير من قصف", "قصف مباشر على",
+    "إطلاق صواريخ باتجاه",
+]
+ACTIVE_SIREN_PHRASES = [_normalize(p) for p in ACTIVE_SIREN_PHRASES]
+
+# West Bank + siren combos — strongest possible signal
+WB_SIREN_COMBOS = [
+    "صافرات في الضفة", "انذار في الضفة",
+    "صافرات في رام الله", "صافرات في نابلس",
+    "صافرات في جنين", "صافرات في الخليل",
+    "صافرات في طولكرم", "صافرات في قلقيليه",
+    "صواريخ على الضفة", "قصف على الضفة",
+    "رشقة على الضفة", "هجوم على الضفة",
+    "تفجير في رام الله", "انفجار في نابلس",
+    "تفجير في الخليل", "انفجار في جنين",
+]
+WB_SIREN_COMBOS = [_normalize(p) for p in WB_SIREN_COMBOS]
+
+
+def _is_past_event(text: str) -> bool:
+    """True if the message describes a completed past event, not live."""
+    return _has(text, PAST_TENSE_MARKERS)
+
+
+def _is_active_siren(text: str) -> bool:
+    """True if message contains active/live siren or attack language."""
+    return _has(text, ACTIVE_SIREN_PHRASES) or _has(text, WB_SIREN_COMBOS)
+
+
 def classify(raw_text: str, source: str) -> Optional[dict]:
     """
-    Tier 1: Missile/rocket sirens or confirmed impacts.
+    Tier 1: ACTIVE missile/rocket sirens or confirmed impacts affecting Palestine/WB.
 
-    All missile/siren alerts are treated as LOCAL threats — the West Bank and
-    Israel share the same geographic space. A missile hitting Tel Aviv or Haifa
-    is a direct threat to WB residents (same airspace, same sirens).
+    STRICT rules:
+    - west_bank_siren ONLY when: WB zone explicitly mentioned WITH attack verb, OR
+      active siren phrase targeting WB/general area is present.
+    - Israel interior-only attacks → regional_attack (not west_bank_siren)
+    - Past-tense events → discard
+    - MENA without Israel/WB target → discard
 
-    Returns a dict ready for Alert construction, or None.
     Always call is_security_relevant() first as a cheap pre-check.
     """
     if not _channel_allows_tier(source, "tier1"):
@@ -778,39 +829,62 @@ def classify(raw_text: str, source: str) -> Optional[dict]:
     if _has(normed, ISRAEL_ATTACKING_OUT):
         return None
 
-    # West Bank explicitly mentioned → CRITICAL/HIGH
+    # Past-tense events are news summaries, not live alerts
+    if _is_past_event(normed):
+        return None
+
+    # ── WEST BANK DIRECTLY MENTIONED ──────────────────────────────────────────
+    # WB zone + attack verb → definitely a WB siren/attack
     if _is_wb_zone(normed):
-        severity = (
-            Severity.critical
-            if _normalize("رام الله") in normed or "ramallah" in normed.lower()
-            else Severity.high
-        )
         area = _extract_area(normed) or "West Bank"
         zone = _extract_zone(normed)
+        severity = Severity.critical if _has(normed, WB_SIREN_COMBOS) else Severity.high
         return _build(AlertType.west_bank_siren, severity, clean, source, area, zone=zone)
 
-    # Sirens / missiles hitting Israel interior — same geolocation, HIGH severity
-    siren_terms = [_normalize(t) for t in ["صافرات", "انذار", "صافره"]]
-    has_siren = any(s in normed for s in siren_terms) or "sirens" in normed.lower()
-
-    if _is_israel_interior(normed) or has_siren:
+    # ── ACTIVE SIREN PHRASE (targeting WB or general) ─────────────────────────
+    if _is_active_siren(normed):
         area = _extract_area(normed) or "West Bank"
         zone = _extract_zone(normed) or "west_bank"
         return _build(AlertType.west_bank_siren, Severity.high, clean, source, area, zone=zone)
 
-    # MENA country as source of incoming attack (Iran/Yemen/Lebanon → Israel/WB)
+    # ── SIREN ALERTS — only if explicitly mentioning sirens (صافرات) ──────────
+    siren_terms = [_normalize(t) for t in ["صافرات", "صافره الانذار", "دوي صافرات"]]
+    has_explicit_siren = any(s in normed for s in siren_terms) or "sirens" in normed.lower()
+
+    if has_explicit_siren:
+        # If only hitting Israel interior (not WB), downgrade to regional_attack
+        if _is_israel_interior(normed) and not _is_wb_zone(normed):
+            area = _extract_area(normed)
+            return _build(AlertType.regional_attack, Severity.medium, clean, source, area)
+        # Otherwise treat as potential WB threat
+        area = _extract_area(normed) or "West Bank"
+        zone = _extract_zone(normed) or "west_bank"
+        return _build(AlertType.west_bank_siren, Severity.high, clean, source, area, zone=zone)
+
+    # ── MENA INCOMING ATTACK (Iran/Yemen/Lebanon → Israel) ───────────────────
     if _is_mena_zone(normed):
         has_urgency = _has_urgent_marker(normed)
         has_israel_target = _has(normed, ISRAEL_AS_TARGET)
-        if has_urgency or has_israel_target:
+        # Only keep if explicitly targeting Israel AND urgent (live event)
+        if has_urgency and has_israel_target:
             area = _extract_area(normed) or "West Bank"
             zone = _extract_zone(normed) or "west_bank"
-            return _build(AlertType.west_bank_siren, Severity.high, clean, source, area, zone=zone)
-        # MENA event without clear Israel/WB target → medium severity
-        area = _extract_area(normed)
-        return _build(AlertType.regional_attack, Severity.medium, clean, source, area)
+            return _build(AlertType.regional_attack, Severity.medium, clean, source, area)
+        # Generic MENA → discard (not directly relevant to WB residents)
+        return None
+
+    # ── Israel interior only, no WB mention ──────────────────────────────────
+    if _is_israel_interior(normed):
+        # Only report if explosive/impact (not just "military operation")
+        impact_terms = [_normalize(t) for t in ["انفجار", "سقط", "اصابات", "ضحايا", "قتلى"]]
+        if _has(normed, impact_terms):
+            area = _extract_area(normed)
+            return _build(AlertType.regional_attack, Severity.low, clean, source, area)
+        return None
 
     return None
+
+
 
 
 def classify_wb_operational(raw_text: str, source: str) -> Optional[dict]:

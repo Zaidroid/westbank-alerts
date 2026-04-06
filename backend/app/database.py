@@ -229,7 +229,7 @@ async def duplicate_check(source: str, source_msg_id: int) -> bool:
         return await cur.fetchone() is not None
 
 
-async def content_duplicate_check(raw_text: str, window_minutes: int = 30) -> bool:
+async def content_duplicate_check(raw_text: str, window_minutes: int = 90) -> bool:
     """Check if a similar alert was already inserted within the time window.
 
     Uses word-level Jaccard similarity (>0.6) on normalized text to catch

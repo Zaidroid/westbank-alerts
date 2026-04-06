@@ -182,3 +182,19 @@ export async function getWeather(): Promise<WeatherResponse> {
 export async function getPrayerTimes(): Promise<PrayerTimesResponse> {
   return apiClient.get<PrayerTimesResponse>('/prayer-times');
 }
+
+export interface ActiveSirensResponse {
+  active: boolean;
+  count: number;
+  sirens: Alert[];
+  window_minutes: number;
+  checked_at: string;
+}
+
+/**
+ * Get ACTIVE sirens only (last 30 min). Empty = all clear.
+ * Use for the real-time warning banner ONLY.
+ */
+export async function getActiveSirens(minutes = 30): Promise<ActiveSirensResponse> {
+  return apiClient.get<ActiveSirensResponse>(`/alerts/sirens?minutes=${minutes}`);
+}

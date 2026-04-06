@@ -122,6 +122,18 @@ export interface Translations {
   onRoute: string;
   distance: string;
   estimatedTime: string;
+  home: string;
+  settings: string;
+  pushNotifications: string;
+  language: string;
+  safeRoutes: string;
+  fastest: string;
+  alternate: string;
+  currentLocation: string;
+  whereTo: string;
+  nodes: string;
+  safetyAlerts: string;
+  startNavigation: string;
 }
 
 const AR: Translations = {
@@ -244,6 +256,18 @@ const AR: Translations = {
   onRoute: "على مسارك",
   distance: "المسافة",
   estimatedTime: "الوقت المتوقع",
+  home: "الرئيسية",
+  settings: "الإعدادات",
+  pushNotifications: "إشعارات الهاتف",
+  language: "اللغة",
+  safeRoutes: "المسارات الآمنة",
+  fastest: "الأسرع",
+  alternate: "مسار بديل",
+  currentLocation: "موقعي الحالي",
+  whereTo: "إلى أين تريد الذهاب؟",
+  nodes: "نقاط",
+  safetyAlerts: "تنبيهات أمنية",
+  startNavigation: "بدء التوجيه",
 };
 
 const EN: Translations = {
@@ -366,6 +390,18 @@ const EN: Translations = {
   onRoute: "On Your Route",
   distance: "Distance",
   estimatedTime: "Estimated Time",
+  home: "Home",
+  settings: "Settings",
+  pushNotifications: "Push Notifications",
+  language: "Language",
+  safeRoutes: "Safe Routes",
+  fastest: "Fastest",
+  alternate: "Alternate",
+  currentLocation: "Current Location",
+  whereTo: "Where to?",
+  nodes: "Nodes",
+  safetyAlerts: "Safety Alerts",
+  startNavigation: "Start Navigation",
 };
 
 interface LangContextValue {

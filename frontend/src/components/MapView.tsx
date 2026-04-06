@@ -7,7 +7,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { Alert, AlertType } from "@/lib/api";
 import type { CheckpointUpdate } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
-import { MapContainer, TileLayer, Marker, Popup, Polygon, CircleMarker, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polygon, CircleMarker, Polyline, useMap } from "react-leaflet";
 import { useLang, getStatusLabel, getTypeLabel, formatRelativeTime } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -258,6 +258,51 @@ function ZoneOverlays({ alerts, t }: { alerts: Alert[]; t: any }) {
 }
 
 
+function MapController({ 
+  userLocation, 
+  routeCoordinates 
+}: { 
+  userLocation: { latitude: number; longitude: number } | null,
+  routeCoordinates: [number, number][]
+}) {
+  const map = useMap();
+  const [trackedRoute, setTrackedRoute] = useState<string>("");
+
+  useEffect(() => {
+    if (routeCoordinates && routeCoordinates.length > 0) {
+      const hash = routeCoordinates.map(c => `${c[0]},${c[1]}`).join('|');
+      if (trackedRoute !== hash) {
+        const bounds = L.latLngBounds(routeCoordinates);
+        map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
+        setTrackedRoute(hash);
+      }
+    } else if (userLocation && !trackedRoute) {
+      map.flyTo([userLocation.latitude, userLocation.longitude], 13, { duration: 1.5 });
+      setTrackedRoute("user");
+    }
+  }, [userLocation, routeCoordinates, map, trackedRoute]);
+
+  return (
+    <div className="leaflet-bottom leaflet-right" style={{ bottom: '20px', right: '10px' }}>
+      <div className="leaflet-control">
+        <button 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (userLocation) {
+              map.flyTo([userLocation.latitude, userLocation.longitude], 14, { duration: 1.5 });
+            }
+          }}
+          className="w-10 h-10 bg-surface-container-highest/90 backdrop-blur-md rounded-full shadow-lg border border-outline-variant/30 flex items-center justify-center text-secondary hover:bg-surface-container-high transition-colors active:scale-95"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <span className="material-symbols-outlined text-[20px] filled">my_location</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MapMarkers({
   geoJsonData, alerts, recentUpdates, showCheckpoints, showAlerts,
   onCheckpointClick, onAlertClick, t, lang,
@@ -386,11 +431,46 @@ export function MapView({ alerts, checkpointUpdates, onCheckpointClick, onAlertC
     [filteredAlerts]
   );
 
-  // Route polyline coordinates (checkpoint sequence)
-  const routePolylineCoordinates = useMemo(() => {
+  // OSRM road-following route geometry
+  const [osrmGeometry, setOsrmGeometry] = useState<[number, number][]>([]);
+  const [osrmLoading, setOsrmLoading] = useState(false);
+
+  // Fallback straight-line coordinates
+  const fallbackCoordinates = useMemo(() => {
     if (!selectedRoute) return [];
     return selectedRoute.checkpoints.map((cp: any) => [cp.latitude, cp.longitude] as [number, number]);
   }, [selectedRoute]);
+
+  // Fetch OSRM road geometry when route changes
+  useEffect(() => {
+    if (!selectedRoute || selectedRoute.checkpoints.length < 2) {
+      setOsrmGeometry([]);
+      return;
+    }
+
+    const coords = selectedRoute.checkpoints
+      .map((cp: any) => `${cp.longitude},${cp.latitude}`)
+      .join(';');
+
+    setOsrmLoading(true);
+    fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.routes && data.routes[0]) {
+          const geom = data.routes[0].geometry.coordinates.map(
+            (c: [number, number]) => [c[1], c[0]] as [number, number]
+          );
+          setOsrmGeometry(geom);
+        } else {
+          setOsrmGeometry([]);
+        }
+      })
+      .catch(() => setOsrmGeometry([]))
+      .finally(() => setOsrmLoading(false));
+  }, [selectedRoute?.id]);
+
+  // Use OSRM geometry if available, otherwise fallback to straight lines
+  const routePolylineCoordinates = osrmGeometry.length > 0 ? osrmGeometry : fallbackCoordinates;
 
   const tileConfig = TILE_CONFIGS[mapStyle];
   const tileUrl = (mapStyle === "clean" && theme === "dark" && tileConfig.darkUrl) ? tileConfig.darkUrl : tileConfig.url;
@@ -499,12 +579,13 @@ export function MapView({ alerts, checkpointUpdates, onCheckpointClick, onAlertC
 
       <MapContainer
         key={`${theme}-${mapStyle}`}
-        center={[31.95, 35.25]}
+        center={userLocation ? [userLocation.latitude, userLocation.longitude] : [31.95, 35.25]}
         zoom={10}
         style={{ height: "100%", width: "100%" }}
         className="h-full w-full z-0"
         zoomControl={false}
       >
+        <MapController userLocation={userLocation || null} routeCoordinates={routePolylineCoordinates} />
         <TileLayer attribution={tileConfig.attr} url={tileUrl} />
 
         {/* Zone pulse overlays - shows zones with missile/security alerts */}
@@ -513,50 +594,59 @@ export function MapView({ alerts, checkpointUpdates, onCheckpointClick, onAlertC
         {/* Selected route visualization */}
         {selectedRoute && routePolylineCoordinates.length > 0 && (
           <>
-            {/* Route polyline */}
+            {/* Route glow (wider, translucent line behind the main line) */}
             <Polyline
               positions={routePolylineCoordinates}
               pathOptions={{
                 color: '#3b82f6',
-                weight: 3,
-                opacity: 0.7,
-                dashArray: '5, 5',
+                weight: 10,
+                opacity: 0.15,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+            {/* Main route line */}
+            <Polyline
+              positions={routePolylineCoordinates}
+              pathOptions={{
+                color: '#3b82f6',
+                weight: 4,
+                opacity: 0.85,
+                lineCap: 'round',
+                lineJoin: 'round',
               }}
             />
 
-            {/* Route start/end markers */}
-            {routePolylineCoordinates.length > 0 && (
-              <>
-                <CircleMarker
-                  center={routePolylineCoordinates[0]}
-                  radius={8}
-                  pathOptions={{
-                    color: '#10b981',
-                    fillColor: '#10b981',
-                    fillOpacity: 0.9,
-                    weight: 2,
-                  }}
-                >
-                  <Popup className="font-sans" closeButton={false}>
-                    <div className="text-xs font-medium">{selectedRoute.from}</div>
-                  </Popup>
-                </CircleMarker>
-                <CircleMarker
-                  center={routePolylineCoordinates[routePolylineCoordinates.length - 1]}
-                  radius={8}
-                  pathOptions={{
-                    color: '#ef4444',
-                    fillColor: '#ef4444',
-                    fillOpacity: 0.9,
-                    weight: 2,
-                  }}
-                >
-                  <Popup className="font-sans" closeButton={false}>
-                    <div className="text-xs font-medium">{selectedRoute.to}</div>
-                  </Popup>
-                </CircleMarker>
-              </>
-            )}
+            {/* Route start marker */}
+            <CircleMarker
+              center={fallbackCoordinates[0] || routePolylineCoordinates[0]}
+              radius={9}
+              pathOptions={{
+                color: '#ffffff',
+                fillColor: '#10b981',
+                fillOpacity: 1,
+                weight: 3,
+              }}
+            >
+              <Popup className="font-sans" closeButton={false}>
+                <div className="text-xs font-medium">{selectedRoute.from}</div>
+              </Popup>
+            </CircleMarker>
+            {/* Route end marker */}
+            <CircleMarker
+              center={fallbackCoordinates[fallbackCoordinates.length - 1] || routePolylineCoordinates[routePolylineCoordinates.length - 1]}
+              radius={9}
+              pathOptions={{
+                color: '#ffffff',
+                fillColor: '#ef4444',
+                fillOpacity: 1,
+                weight: 3,
+              }}
+            >
+              <Popup className="font-sans" closeButton={false}>
+                <div className="text-xs font-medium">{selectedRoute.to}</div>
+              </Popup>
+            </CircleMarker>
           </>
         )}
 

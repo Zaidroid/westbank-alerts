@@ -91,53 +91,53 @@ export default defineConfig({
     },
     proxy: {
       '/alerts': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/checkpoints/ws': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         ws: true,
         changeOrigin: true,
       },
       '/checkpoints': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/stats': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/stream': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         ws: true,
         changeOrigin: true,
       },
       '/market': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/internet-status': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/weather': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/zones': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
       '/prayer-times': {
-        target: 'http://localhost:8080',
+        target: 'http://192.168.0.118:8080',
         changeOrigin: true,
       },
     },

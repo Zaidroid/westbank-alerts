@@ -419,6 +419,32 @@ async def active_alerts(
     return AlertResponse(alerts=alerts, total=total, page=1, per_page=200)
 
 
+@app.get("/alerts/sirens", tags=["alerts"])
+async def active_sirens(
+    minutes: int = Query(30, ge=5, le=120,
+                         description="Active siren window in minutes (default 30)"),
+):
+    """
+    ACTIVE missile/siren alerts only — last N minutes (default 30).
+
+    Only returns west_bank_siren type alerts. Empty list = all clear.
+    Use this endpoint for the real-time warning banner on the frontend.
+    Never shows past news or historical alerts.
+    """
+    since = datetime.utcnow() - timedelta(minutes=minutes)
+    alerts, _ = await db.get_alerts(type="west_bank_siren", since=since, limit=10)
+    # Sort critical first
+    sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    alerts.sort(key=lambda a: sev_order.get(a.severity, 3))
+    return {
+        "active": len(alerts) > 0,
+        "count": len(alerts),
+        "sirens": [a.model_dump() for a in alerts],
+        "window_minutes": minutes,
+        "checked_at": _utc_iso(datetime.utcnow()),
+    }
+
+
 @app.get("/alerts/{alert_id}", response_model=Alert, tags=["alerts"])
 async def get_alert(alert_id: int):
     alert = await db.get_alert(alert_id)

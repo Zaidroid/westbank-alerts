@@ -1,70 +1,65 @@
-/**
- * MobileApp — 4-tab shell.
- * Home (الرئيسية) | Route (طريقي) | Checkpoints (حواجز) | Alerts (التنبيهات)
- * + fullscreen map overlay toggle
- * + immersive first-time onboarding
- */
-
 import { useState, useCallback, useMemo } from "react";
-import { Home, Navigation, Bell, X, Map as MapIcon, Shield } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/i18n";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useCheckpoints } from "@/hooks/useCheckpoints";
 import { useActiveRoute } from "@/hooks/useActiveRoute";
 import { useSavedRoutes } from "@/hooks/useSavedRoutes";
+import { useActiveSirens } from "@/hooks/useAlerts";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useGeolocation } from "@/hooks/useGeolocation";
-import { MobileHeader } from "@/components/mobile/MobileHeader";
-import { HomeScreen } from "@/components/mobile/HomeScreen";
-import { RouteScreen } from "@/components/mobile/RouteScreen";
-import { AlertsScreen } from "@/components/mobile/AlertsScreen";
-import { CheckpointsScreen } from "@/components/mobile/CheckpointsScreen";
-import { SettingsSheet } from "@/components/mobile/SettingsSheet";
-import { SplashScreen } from "@/components/mobile/SplashScreen";
-import { DetailPanel } from "@/components/DetailPanel";
-import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
-import { MapView } from "@/components/MapView";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ComponentErrorFallback } from "@/components/ComponentErrorFallback";
-import { KpiDetailSheet } from "@/components/mobile/KpiDetailSheet";
-import { OnboardingFlow, hasCompletedOnboarding } from "@/components/mobile/OnboardingFlow";
 import { isAreaOnRoute } from "@/lib/routes";
-import type { KpiPillType } from "@/components/mobile/KpiDetailSheet";
-import type { Alert, Checkpoint, CheckpointStatus } from "@/lib/api/types";
+import { getAllRoutes } from "@/lib/routes";
+import type { Alert, Checkpoint } from "@/lib/api/types";
 
-type TabId = "home" | "route" | "alerts" | "checkpoints";
+// Setup and Overlays
+import { SplashScreen } from "@/components/mobile/SplashScreen";
+import { OnboardingFlow, hasCompletedOnboarding } from "@/components/mobile/OnboardingFlow";
+import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
+import { DetailPanel } from "@/components/DetailPanel";
+
+// Sentinel Design System Components
+import { SentinelLayout, type TabId } from "@/components/sentinel/SentinelLayout";
+import { SentinelHome } from "@/components/sentinel/SentinelHome";
+import { SentinelNews } from "@/components/sentinel/SentinelNews";
+import { SentinelCheckpoints } from "@/components/sentinel/SentinelCheckpoints";
+import { SentinelMap } from "@/components/sentinel/SentinelMap";
+import { SentinelNavigation } from "@/components/sentinel/SentinelNavigation";
+import { SentinelProfile } from "@/components/sentinel/SentinelProfile";
+
+import { KpiDetailSheet } from "@/components/mobile/KpiDetailSheet";
 
 export default function MobileApp() {
   const { t } = useLang();
   const [splashDone, setSplashDone] = useState(false);
-  const [onboardingDone, setOnboardingDone] = useState(hasCompletedOnboarding);
+  const [onboardingDone, setOnboardingDone] = useState(() => hasCompletedOnboarding());
+  
   const [activeTab, setActiveTab] = useState<TabId>("home");
-  const [showSettings, setShowSettings] = useState(false);
-  const [showMap, setShowMap] = useState(false);
-  const [activePill, setActivePill] = useState<KpiPillType | null>(null);
-  const [checkpointsFilter, setCheckpointsFilter] = useState<CheckpointStatus | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [activePill, setActivePill] = useState<any>(null);
+  
   const [selectedItem, setSelectedItem] = useState<Alert | Checkpoint | null>(null);
   const [selectedCheckpointKey, setSelectedCheckpointKey] = useState<string | null>(null);
 
   const { alerts, checkpointUpdates, connectionStatus } = useRealtime();
   const { data: checkpointsData } = useCheckpoints();
-  const { activeRoute, setActiveRoute, clearActiveRoute } = useActiveRoute();
-  const { savedRoutes, saveRoute, removeRoute, isRouteSaved } = useSavedRoutes();
+  const { activeRoute, setActiveRoute } = useActiveRoute();
   const { location: userLocation, requestPermission: requestLocation } = useGeolocation();
-  const {
-    permission: notifPermission,
-    enabled: notifEnabled,
-    isSupported: notifSupported,
-    requestPermission: requestNotifPermission,
-    disableNotifications,
-  } = usePushNotifications(alerts);
+  const { requestPermission: requestNotifPermission } = usePushNotifications(alerts);
 
   const checkpoints = checkpointsData?.checkpoints ?? [];
 
-  const criticalCount = useMemo(
-    () => alerts.filter(a => a.severity === "critical" || a.severity === "high").length,
-    [alerts]
+  const handleSelectItem = useCallback((item: Alert | Checkpoint) => {
+    setSelectedItem(item);
+    setSelectedCheckpointKey("canonical_key" in item ? item.canonical_key : null);
+  }, []);
+
+  // Use the active sirens hook for a reliable, live-only badge count
+  const { data: activeSirensData } = useActiveSirens();
+  const criticalCount = activeSirensData?.count || 0;
+  
+  const closedCount = useMemo(
+    () => checkpoints.filter(cp => cp.status === "closed" || cp.status === "military").length,
+    [checkpoints]
   );
 
   const routeIssueCount = useMemo(() => {
@@ -74,36 +69,13 @@ export default function MobileApp() {
       routeKeys.has(cp.canonical_key) &&
       (cp.status === "closed" || cp.status === "congested" || cp.status === "military")
     ).length;
-    const routeAlerts = alerts.filter(a => isAreaOnRoute(a.area, activeRoute)).length;
-    return blocked + routeAlerts;
-  }, [activeRoute, checkpoints, alerts]);
+    return blocked;
+  }, [activeRoute, checkpoints]);
 
-  const handleSelectItem = useCallback((item: Alert | Checkpoint) => {
-    setSelectedItem(item);
-    setSelectedCheckpointKey("canonical_key" in item ? item.canonical_key : null);
-    setShowMap(false);
-  }, []);
-
-  const handleCheckpointPress = useCallback((checkpoint: Checkpoint) => {
-    setSelectedItem(checkpoint);
-    setSelectedCheckpointKey(checkpoint.canonical_key);
-  }, []);
-
-  const closedCount = useMemo(
-    () => checkpoints.filter(cp => cp.status === "closed" || cp.status === "military").length,
-    [checkpoints]
-  );
-
-  const TABS: { id: TabId; icon: typeof Home; label: string; badge?: number }[] = [
-    { id: "home",         icon: Home,       label: t.liveMap },
-    { id: "route",        icon: Navigation, label: t.routes,      badge: routeIssueCount },
-    { id: "checkpoints",  icon: Shield,     label: "حواجز",        badge: closedCount },
-    { id: "alerts",       icon: Bell,       label: t.alerts,      badge: criticalCount },
-  ];
+  const locationName = t.appTitle;
 
   return (
     <>
-      {/* ── Splash → Onboarding flow ────────────────────────────────── */}
       {!splashDone && (
         <SplashScreen onDone={() => setSplashDone(true)} />
       )}
@@ -116,161 +88,99 @@ export default function MobileApp() {
         />
       )}
 
-      <div className="h-full flex flex-col bg-background text-foreground overflow-hidden">
-        <MobileHeader
+      {splashDone && onboardingDone && (
+        <SentinelLayout
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          locationName={locationName}
           connectionStatus={connectionStatus}
-          onSettingsPress={() => setShowSettings(true)}
-          newUpdateCount={checkpointUpdates.length}
+          badges={{
+            news: criticalCount,
+            checkpoints: closedCount,
+            map: routeIssueCount,
+          }}
+          onSosPress={() => {
+            alert("SOS: Emergency dispatch initiated locally.");
+          }}
           onPillPress={setActivePill}
-        />
-
-        <main
-          className="flex-1 min-h-0 overflow-hidden"
-          style={{ paddingBottom: "calc(60px + env(safe-area-inset-bottom, 0px))" }}
         >
           {activeTab === "home" && (
-            <HomeScreen
+            <SentinelHome
               alerts={alerts}
               checkpoints={checkpoints}
               checkpointUpdates={checkpointUpdates}
-              activeRoute={activeRoute}
-              onRoutePress={() => setActiveTab("route")}
-              onClearRoute={clearActiveRoute}
-              onGoToRouteTab={() => setActiveTab("route")}
-              onGoToAlertsTab={() => setActiveTab("alerts")}
-              onShowMap={() => setShowMap(true)}
-              onViewCheckpoints={(filter) => {
-                setCheckpointsFilter((filter as CheckpointStatus) ?? null);
-                setActiveTab("checkpoints");
-              }}
+              onNavigateMap={() => setActiveTab("map")}
+              onExploreCheckpoints={() => setActiveTab("checkpoints")}
+              onViewAlerts={() => setActiveTab("news")}
             />
           )}
 
-          {activeTab === "route" && (
-            <RouteScreen
-              activeRoute={activeRoute}
-              checkpoints={checkpoints}
-              checkpointUpdates={checkpointUpdates}
-              userLocation={userLocation}
-              onRouteConfirmed={setActiveRoute}
-              onClearRoute={clearActiveRoute}
-              isRouteSaved={activeRoute ? isRouteSaved(activeRoute.id) : false}
-              onSaveRoute={activeRoute ? () => saveRoute(activeRoute) : undefined}
+          {activeTab === "news" && (
+            <SentinelNews
+              alerts={alerts}
             />
           )}
 
           {activeTab === "checkpoints" && (
-            <CheckpointsScreen
+            <SentinelCheckpoints
               checkpoints={checkpoints}
               checkpointUpdates={checkpointUpdates}
-              initialFilter={checkpointsFilter}
+              onNavigateMap={() => setActiveTab("map")}
             />
           )}
 
-          {activeTab === "alerts" && (
-            <AlertsScreen alerts={alerts} activeRoute={activeRoute} />
+          {activeTab === "map" && (
+            <SentinelMap
+              alerts={alerts}
+              checkpoints={checkpoints}
+              checkpointUpdates={checkpointUpdates}
+              userLocation={userLocation}
+              routes={getAllRoutes()}
+              activeRoute={activeRoute}
+              onSelectRoute={setActiveRoute}
+              onStartNavigation={() => {
+                // Ensure there's a route selected
+                if (!activeRoute && getAllRoutes().length > 0) {
+                  setActiveRoute(getAllRoutes()[0]);
+                }
+                setIsNavigating(true);
+              }}
+              onCheckpointClick={handleSelectItem}
+              onAlertClick={handleSelectItem}
+            />
           )}
-        </main>
 
-        {/* Bottom nav */}
-        <nav
-          className="fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur-md flex items-stretch"
-          style={{
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
-            minHeight: "calc(60px + env(safe-area-inset-bottom, 0px))",
-          }}
-        >
-          {TABS.map(({ id, icon: Icon, label, badge }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={cn(
-                "flex-1 flex flex-col items-center justify-center gap-0.5 relative transition-colors",
-                activeTab === id ? "text-primary" : "text-muted-foreground"
-              )}
-              style={{ minHeight: 60 }}
-            >
-              <div className="relative">
-                <Icon className={cn("h-5 w-5", activeTab === id && "stroke-[2.5]")} />
-                {badge != null && badge > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
-                    {badge > 9 ? "9+" : badge}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] font-medium">{label}</span>
-              {activeTab === id && (
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-t-full" />
-              )}
-            </button>
-          ))}
-        </nav>
+          {activeTab === "profile" && (
+            <SentinelProfile
+              connectionStatus={connectionStatus}
+              locationName={locationName}
+              userLocation={userLocation}
+            />
+          )}
+        </SentinelLayout>
+      )}
 
-        {/* ── Fullscreen map overlay ─────────────────────────────────────── */}
-        {showMap && (
-          <div className="fixed inset-0 z-[60] bg-background flex flex-col"
-               style={{ paddingBottom: "calc(60px + env(safe-area-inset-bottom, 0px))" }}>
-            {/* Map header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 shrink-0 bg-background/90 backdrop-blur">
-              <div className="flex items-center gap-2">
-                <MapIcon className="w-4 h-4 text-primary" />
-                <span className="text-sm font-bold">الخريطة المباشرة</span>
-              </div>
-              <button
-                onClick={() => setShowMap(false)}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Map fills the rest */}
-            <div className="flex-1 min-h-0">
-              <ErrorBoundary fallback={(err, reset) => <ComponentErrorFallback error={err} onReset={reset} />}>
-                <MapView
-                  checkpoints={checkpoints}
-                  alerts={alerts}
-                  checkpointUpdates={checkpointUpdates}
-                  onCheckpointClick={handleSelectItem}
-                  onAlertClick={handleSelectItem}
-                  userLocation={userLocation}
-                  selectedRoute={activeRoute}
-                />
-              </ErrorBoundary>
-            </div>
-          </div>
-        )}
-
-        {/* Sheets & panels */}
-        <SettingsSheet
-          isOpen={showSettings}
-          onOpenChange={setShowSettings}
-          notifPermission={notifPermission}
-          notifEnabled={notifEnabled}
-          notifSupported={notifSupported}
-          onEnableNotifications={requestNotifPermission}
-          onDisableNotifications={disableNotifications}
-          savedRoutes={savedRoutes}
+      {/* Global Overlays */}
+      {isNavigating && activeRoute && (
+        <SentinelNavigation
           activeRoute={activeRoute}
-          onSelectRoute={(route) => { setActiveRoute(route); setActiveTab("home"); }}
-          onRemoveSavedRoute={removeRoute}
-          isCurrentRouteSaved={activeRoute ? isRouteSaved(activeRoute.id) : false}
-          onSaveCurrentRoute={() => { if (activeRoute) saveRoute(activeRoute); }}
+          checkpoints={checkpoints}
+          alerts={alerts}
+          userLocation={userLocation}
+          onEndNavigation={() => setIsNavigating(false)}
+          onReRoute={() => setIsNavigating(false)}
         />
-
-        <DetailPanel
-          item={selectedItem}
-          checkpointKey={selectedCheckpointKey}
-          onClose={() => { setSelectedItem(null); setSelectedCheckpointKey(null); }}
-        />
-
-        <KpiDetailSheet
-          type={activePill}
-          onClose={() => setActivePill(null)}
-        />
-
-        <PwaInstallPrompt />
-      </div>
+      )}
+      <DetailPanel
+        item={selectedItem}
+        checkpointKey={selectedCheckpointKey}
+        onClose={() => { setSelectedItem(null); setSelectedCheckpointKey(null); }}
+      />
+      <KpiDetailSheet
+        type={activePill}
+        onClose={() => setActivePill(null)}
+      />
+      <PwaInstallPrompt />
     </>
   );
 }

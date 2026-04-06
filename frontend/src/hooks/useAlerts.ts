@@ -7,6 +7,8 @@ import {
   getAlerts,
   getLatestAlerts,
   getPaginatedAlerts,
+  getActiveSirens,
+  type ActiveSirensResponse,
 } from '../lib/api/endpoints';
 import type {
   AlertQueryParams,
@@ -85,5 +87,20 @@ export function useLatestAlerts(n: number = 10) {
     queryKey: queryKeys.alerts.latest(n),
     queryFn: () => getLatestAlerts(n),
     staleTime: 30 * 1000, // 30 seconds for dynamic data
+  });
+}
+
+/**
+ * Hook to check for ACTIVE missile/siren alerts in the last 30 minutes.
+ * Polls every 45s. Returns { active: false } when the situation is clear.
+ * Use ONLY for the real-time warning banner — not for the alerts list.
+ */
+export function useActiveSirens(windowMinutes = 30) {
+  return useQuery<ActiveSirensResponse>({
+    queryKey: ['alerts', 'sirens', windowMinutes],
+    queryFn: () => getActiveSirens(windowMinutes),
+    refetchInterval: 45_000, // poll every 45 seconds
+    staleTime: 30_000,
+    retry: 1,
   });
 }
