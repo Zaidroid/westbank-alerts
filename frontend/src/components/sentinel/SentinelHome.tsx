@@ -155,45 +155,37 @@ export function SentinelHome({
           </button>
         </div>
         
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-surface-container-low rounded-xl p-4 flex flex-col items-center justify-center hover:bg-surface-container transition-colors shadow-sm cursor-pointer" onClick={onExploreCheckpoints}>
-            <div className="w-2.5 h-2.5 rounded-full bg-tertiary mb-2 glow-tertiary" />
-            <span className="font-headline font-bold text-3xl text-on-surface leading-none mb-1">
-              {kpis.open}
-            </span>
-            <span className="text-[9px] font-label font-bold text-on-surface-variant uppercase tracking-widest bg-surface-container px-2 py-0.5 rounded border border-outline-variant/30 mt-1 text-center">
-              {t.open}
-            </span>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-surface-container-low rounded-lg p-3 flex items-center justify-between hover:bg-surface-container transition-colors shadow-sm cursor-pointer border border-outline-variant/10 active:scale-95" onClick={onExploreCheckpoints}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-tertiary glow-tertiary shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+              <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">{t.open}</span>
+            </div>
+            <span className="font-headline font-bold text-xl text-on-surface leading-none">{kpis.open}</span>
           </div>
           
-          <div className="bg-surface-container-low rounded-xl p-4 flex flex-col items-center justify-center hover:bg-surface-container transition-colors shadow-sm cursor-pointer" onClick={onExploreCheckpoints}>
-            <div className="w-2.5 h-2.5 rounded-full bg-purple-500 mb-2 glow-purple" />
-            <span className="font-headline font-bold text-3xl text-on-surface leading-none mb-1">
-              {kpis.military}
-            </span>
-            <span className="text-[9px] font-label font-bold text-purple-400 uppercase tracking-widest bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 mt-1 text-center">
-              {t.military}
-            </span>
+          <div className="bg-surface-container-low rounded-lg p-3 flex items-center justify-between hover:bg-surface-container transition-colors shadow-sm cursor-pointer border border-outline-variant/10 active:scale-95" onClick={onExploreCheckpoints}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-purple-500 glow-purple shadow-[0_0_8px_rgba(168,85,247,0.4)]" />
+              <span className="text-[10px] font-label font-bold text-purple-400 uppercase tracking-widest">{t.military}</span>
+            </div>
+            <span className="font-headline font-bold text-xl text-on-surface leading-none">{kpis.military}</span>
           </div>
 
-          <div className="bg-surface-container-low rounded-xl p-4 flex flex-col items-center justify-center hover:bg-surface-container transition-colors shadow-sm cursor-pointer" onClick={onExploreCheckpoints}>
-            <div className="w-2.5 h-2.5 rounded-full bg-error mb-2 glow-error" />
-            <span className="font-headline font-bold text-3xl text-on-surface leading-none mb-1">
-              {kpis.closed}
-            </span>
-            <span className="text-[9px] font-label font-bold text-error uppercase tracking-widest bg-error/10 px-2 py-0.5 rounded border border-error/20 mt-1 text-center">
-              {t.closed}
-            </span>
+          <div className="bg-surface-container-low rounded-lg p-3 flex items-center justify-between hover:bg-surface-container transition-colors shadow-sm cursor-pointer border border-outline-variant/10 active:scale-95" onClick={onExploreCheckpoints}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-error glow-error shadow-[0_0_8px_rgba(239,68,68,0.4)]" />
+              <span className="text-[10px] font-label font-bold text-error uppercase tracking-widest">{t.closed}</span>
+            </div>
+            <span className="font-headline font-bold text-xl text-on-surface leading-none">{kpis.closed}</span>
           </div>
 
-          <div className="bg-surface-container-low rounded-xl p-4 flex flex-col items-center justify-center hover:bg-surface-container transition-colors shadow-sm cursor-pointer" onClick={onExploreCheckpoints}>
-            <div className="w-2.5 h-2.5 rounded-full bg-secondary mb-2 glow-secondary" />
-            <span className="font-headline font-bold text-3xl text-on-surface leading-none mb-1">
-              {kpis.congested}
-            </span>
-            <span className="text-[9px] font-label font-bold text-secondary uppercase tracking-widest bg-secondary/10 px-2 py-0.5 rounded border border-secondary/20 mt-1 text-center">
-              {t.congested}
-            </span>
+          <div className="bg-surface-container-low rounded-lg p-3 flex items-center justify-between hover:bg-surface-container transition-colors shadow-sm cursor-pointer border border-outline-variant/10 active:scale-95" onClick={onExploreCheckpoints}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-secondary glow-secondary shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+              <span className="text-[10px] font-label font-bold text-secondary uppercase tracking-widest">{t.congested}</span>
+            </div>
+            <span className="font-headline font-bold text-xl text-on-surface leading-none">{kpis.congested}</span>
           </div>
         </div>
         
@@ -222,7 +214,8 @@ export function SentinelHome({
             <SentinelCheckpointCard 
               key={cp.canonical_key} 
               checkpoint={cp} 
-              updates={updates} 
+              updates={updates}
+              onClick={onNavigateMap}
             />
           ))}
         </div>

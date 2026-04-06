@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useLang } from "@/lib/i18n";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useCheckpoints } from "@/hooks/useCheckpoints";
@@ -43,7 +43,7 @@ export default function MobileApp() {
   const { alerts, checkpointUpdates, connectionStatus } = useRealtime();
   const { data: checkpointsData } = useCheckpoints();
   const { activeRoute, setActiveRoute } = useActiveRoute();
-  const { location: userLocation, requestPermission: requestLocation } = useGeolocation();
+  const { location: userLocation, requestPermission: requestLocation, startWatching, stopWatching } = useGeolocation();
   const { requestPermission: requestNotifPermission } = usePushNotifications(alerts);
 
   const checkpoints = checkpointsData?.checkpoints ?? [];
@@ -52,6 +52,16 @@ export default function MobileApp() {
     setSelectedItem(item);
     setSelectedCheckpointKey("canonical_key" in item ? item.canonical_key : null);
   }, []);
+
+  // Dynamically start and stop geolocation tracking to save battery
+  // but ensure live map and navigation have continuous blue-dot tracking.
+  useEffect(() => {
+    if (activeTab === "map" || isNavigating) {
+      startWatching();
+    } else {
+      stopWatching();
+    }
+  }, [activeTab, isNavigating, startWatching, stopWatching]);
 
   // Use the active sirens hook for a reliable, live-only badge count
   const { data: activeSirensData } = useActiveSirens();

@@ -19,6 +19,8 @@ export interface UseGeolocationResult {
   isLoading: boolean;
   error: string | null;
   requestPermission: () => Promise<boolean>;
+  startWatching: () => void;
+  stopWatching: () => void;
   clearLocation: () => void;
   isSupported: boolean;
 }
@@ -217,6 +219,8 @@ export function useGeolocation(): UseGeolocationResult {
     isLoading,
     error,
     requestPermission,
+    startWatching,
+    stopWatching,
     clearLocation,
     isSupported,
   };

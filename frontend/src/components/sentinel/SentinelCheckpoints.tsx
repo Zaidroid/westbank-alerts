@@ -136,7 +136,8 @@ export function SentinelCheckpoints({
             <SentinelCheckpointCard 
               key={cp.canonical_key} 
               checkpoint={cp} 
-              updates={updatesMap.get(cp.canonical_key) || []} 
+              updates={updatesMap.get(cp.canonical_key) || []}
+              onClick={onNavigateMap}
             />
           ))
         )}

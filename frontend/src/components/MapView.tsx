@@ -107,7 +107,7 @@ function createCheckpointIcon(status: string, isRecent?: boolean) {
   const color = CHECKPOINT_COLORS[status] || "#6b7280";
   const size = isRecent ? 15 : 12;
   const pulseRing = isRecent
-    ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${size + 16}px;height:${size + 16}px;border-radius:50%;border:2px solid ${color};animation:cp-pulse 2s ease-out 3;opacity:0;"></div>`
+    ? `<div style="position:absolute;top:0;left:0;width:${size + 16}px;height:${size + 16}px;border-radius:50%;border:2px solid ${color};animation:cp-pulse 2s ease-out infinite;opacity:0;"></div>`
     : '';
   return L.divIcon({
     className: "checkpoint-marker",
@@ -123,11 +123,11 @@ function createCheckpointIcon(status: string, isRecent?: boolean) {
 function createAlertIcon(type: AlertType, severity: string) {
   const color = ALERT_TYPE_COLORS[type] || SEVERITY_COLORS[severity] || "#ef4444";
   return L.divIcon({
-    className: "",
+    className: "alert-marker-animated",
     html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
-      <div style="position:absolute;width:24px;height:24px;border-radius:50%;border:1.5px solid ${color};animation:alert-ping 1.8s ease-out 5;opacity:0;"></div>
-      <div style="position:absolute;width:16px;height:16px;border-radius:50%;border:1px solid ${color};animation:alert-ping 1.8s ease-out 5 0.4s;opacity:0;"></div>
-      <div style="width:8px;height:8px;border-radius:50%;background:${color};box-shadow:0 0 10px ${color}cc;"></div>
+      <div style="position:absolute;top:0;left:0;width:24px;height:24px;border-radius:50%;border:1.5px solid ${color};animation:alert-ping 1.8s ease-out infinite;opacity:0;"></div>
+      <div style="position:absolute;top:4px;left:4px;width:16px;height:16px;border-radius:50%;border:1px solid ${color};animation:alert-ping 1.8s ease-out infinite 0.4s;opacity:0;"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:${color};box-shadow:0 0 10px ${color}cc;z-index:2;"></div>
     </div>`,
     iconSize: [24, 24],
     iconAnchor: [12, 12],
@@ -141,8 +141,8 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
   style.id = STYLE_ID;
   style.textContent = `
     @keyframes cp-pulse {
-      0% { transform: translate(-50%,-50%) scale(0.5); opacity: 0.7; }
-      100% { transform: translate(-50%,-50%) scale(1.5); opacity: 0; }
+      0% { transform: scale(0.5); opacity: 0.7; }
+      100% { transform: scale(1.5); opacity: 0; }
     }
     @keyframes alert-ping {
       0% { transform: scale(0.5); opacity: 0.7; }

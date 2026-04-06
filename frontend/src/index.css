@@ -168,9 +168,9 @@ body { overscroll-behavior-y: contain; }
     box-shadow: 0 0 12px 2px rgba(168, 85, 247, 0.2);
   }
 
-  /* Grain overlay */
+  /* Grain overlay - note: parent must have a position (relative/fixed/absolute) */
   .grain-overlay {
-    position: relative;
+    /* No position: relative here to avoid overriding fixed/absolute on parents */
   }
   .grain-overlay::before {
     content: "";

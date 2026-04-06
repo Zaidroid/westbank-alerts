@@ -134,6 +134,7 @@ export interface Translations {
   nodes: string;
   safetyAlerts: string;
   startNavigation: string;
+  viewOnMap: string;
 }
 
 const AR: Translations = {
@@ -167,7 +168,7 @@ const AR: Translations = {
   open: "مفتوح",
   closed: "مغلق",
   congested: "مزدحم",
-  military: "عسكري",
+  military: "جيش الاحتلال",
   slow: "بطيء",
   unknown: "غير معروف",
   active: "نشط",
@@ -221,7 +222,7 @@ const AR: Translations = {
   results: "نتيجة",
   regionalAttack: "هجوم إقليمي",
   warNews: "أخبار حرب",
-  checkpointUpdate: "تحديث حاجز",
+  checkpointUpdate: "تحديث الحواجز",
   rocketAttack: "صواريخ",
   airstrike: "غارة جوية",
   explosion: "انفجار",
@@ -268,6 +269,7 @@ const AR: Translations = {
   nodes: "نقاط",
   safetyAlerts: "تنبيهات أمنية",
   startNavigation: "بدء التوجيه",
+  viewOnMap: "تحديد على الخريطة",
 };
 
 const EN: Translations = {
@@ -402,6 +404,7 @@ const EN: Translations = {
   nodes: "Nodes",
   safetyAlerts: "Safety Alerts",
   startNavigation: "Start Navigation",
+  viewOnMap: "Locate on Map",
 };
 
 interface LangContextValue {

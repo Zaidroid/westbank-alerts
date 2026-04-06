@@ -18,9 +18,9 @@ export function BottomNav({ activeTab, onTabChange, badges }: BottomNavProps) {
 
   const TABS = [
     { id: "home", icon: "home", label: t.home || "HOME" },
-    { id: "news", icon: "feed", label: t.alerts || "NEWS" },
     { id: "checkpoints", icon: "shield", label: t.checkpoints || "CHECKPOINTS" },
     { id: "map", icon: "map", label: t.liveMap || "MAP" },
+    { id: "news", icon: "feed", label: t.alerts || "NEWS" },
     { id: "profile", icon: "person", label: t.settings || "PROFILE" },
   ] as const;
 
