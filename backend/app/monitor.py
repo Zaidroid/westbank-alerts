@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Callable, List, Optional, Set
 
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.tl.types import ChannelParticipantsAdmins
 
 from .classifier import classify, is_security_relevant, classify_wb_operational
@@ -271,8 +272,14 @@ async def start():
         log.warning("Telegram credentials not set. Monitor disabled.")
         return
 
+    # Use StringSession if provided (cloud/serverless), else fall back to file session
+    session = (
+        StringSession(settings.TELEGRAM_SESSION_STRING)
+        if settings.TELEGRAM_SESSION_STRING
+        else settings.session_path
+    )
     client = TelegramClient(
-        settings.session_path,
+        session,
         settings.TELEGRAM_API_ID,
         settings.TELEGRAM_API_HASH,
     )

@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     TELEGRAM_API_ID: int = 0
     TELEGRAM_API_HASH: str = ""
     TELEGRAM_PHONE: str = ""
-    TELEGRAM_SESSION_DIR: str = "/session"
+    TELEGRAM_SESSION_DIR: str = "/data/session"
+    TELEGRAM_SESSION_STRING: str = ""   # StringSession for cloud deployment (no file needed)
     TELEGRAM_CHANNELS: str = ""          # comma-separated usernames
 
     # Location priority

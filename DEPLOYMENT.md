@@ -1,404 +1,380 @@
 # Deployment Guide
 
-Complete setup instructions for deploying West Bank Alerts to production with Netlify (frontend) and Render or Railway (backend).
+This repo is set up for fully automated cloud deployment:
+- **Frontend** → Netlify (auto-deploys on push to `main`)
+- **Backend** → Fly.io (auto-deploys on push to `main`, always-on free tier)
+
+Push to `main` = live update. No manual steps needed after initial setup.
+
+---
 
 ## Architecture
 
 ```
-┌──────────────────────┐
-│  Netlify (Frontend)  │  (React PWA)
-│  https://domain.com  │
-└─────────┬────────────┘
-          │ REST + WebSocket
-          ▼
-┌──────────────────────────┐
-│  Render/Railway (Backend)│  (FastAPI)
-│  https://api.domain.com  │
-└─────────┬────────────────┘
-          │ Telegram API
-          ▼
-     Telegram Channels
+GitHub (main branch)
+    │
+    ├── push to backend/** → GitHub Actions → Fly.io (always-on, free)
+    │
+    └── push to frontend/** → GitHub Actions → Netlify (CDN, free)
+
+Fly.io Backend (https://wb-alerts-api.fly.dev)
+    ├── FastAPI on port 8080
+    ├── Persistent volume at /data (SQLite + session file)
+    └── Telegram monitoring loop
+
+Netlify Frontend (https://yourapp.netlify.app)
+    ├── React PWA, static files
+    └── Calls backend API over HTTPS/WSS
 ```
 
-## Frontend Deployment (Netlify)
+## Why Fly.io (not Render free tier)
 
-### Step 1: Connect GitHub Repository
+Render free tier spins down after 15 minutes of inactivity. This kills the Telegram
+monitoring loop. Fly.io's free tier keeps the process running 24/7 with:
 
-1. Go to https://netlify.app
-2. Click "New site from Git"
-3. Select GitHub and authorize
-4. Choose the repository containing this code
-5. Set build command: `cd frontend && npm install && npm run build`
-6. Set publish directory: `frontend/dist`
-7. Click "Deploy site"
+- 3 shared VMs included free (256MB each)
+- 3GB persistent volume storage
+- No cold starts (auto_stop_machines = false)
+- Amsterdam region (closest free region to West Bank)
+- WebSocket support
 
-### Step 2: Configure Environment Variables
+---
 
-In Netlify UI → Site Settings → Environment:
+## First-Time Setup
 
-```
-VITE_API_URL=https://westbank-api.onrender.com
-VITE_API_WSS_URL=wss://westbank-api.onrender.com
-```
+### Step 1: Create a GitHub repository
 
-Update these with your actual backend domain once it's deployed.
+Push this repo to GitHub:
 
-### Step 3: Verify PWA Installation
-
-1. Visit deployed URL
-2. Check DevTools → Application → Service Workers
-3. Service worker should be registered
-4. Should see "Install app" prompt or button
-5. Test offline capability: DevTools → Network → Offline, then reload
-
-### Step 4: Set Up Custom Domain (Optional)
-
-In Netlify UI → Domain Management:
-
-1. Add custom domain: `yourdomain.com`
-2. Netlify auto-provisions SSL certificate
-3. Update environment variables if domain changes
-
-**Important:** If you change the domain, update `VITE_API_URL` and `CORS_ORIGINS` in backend.
-
-### Netlify Build Logs
-
-If deployment fails:
-1. Go to Netlify → Deploys → View Log
-2. Common issues:
-   - Node version mismatch: Set `NODE_VERSION=18` in environment
-   - Dependency issues: Clear cache in Build & Deploy → Cache
-   - Type errors: Run `npm run build` locally first
-
-## Backend Deployment (Render)
-
-### Step 1: Connect GitHub Repository
-
-1. Go to https://render.com
-2. Click "New +" → "Web Service"
-3. Connect GitHub account and select repository
-
-### Step 2: Configure Web Service
-
-| Setting | Value |
-|---------|-------|
-| Name | `westbank-api` |
-| Environment | `Python 3` |
-| Build Command | `pip install -r backend/requirements.txt` |
-| Start Command | `cd backend && gunicorn -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 app.main:app` |
-| Instance Type | Starter ($7/month) or Standard |
-
-### Step 3: Add Environment Variables
-
-In Render → Environment:
-
-```
-# Telegram Credentials
-TELEGRAM_API_ID=your_api_id
-TELEGRAM_API_HASH=your_api_hash
-TELEGRAM_PHONE=+1234567890
-TELEGRAM_SESSION=wb_alerts
-
-# Channels to Monitor
-CHECKPOINT_CHANNEL_ID=-1001234567890
-ALERT_CHANNEL_ID=-1001234567891
-
-# Server Config
-HOST=0.0.0.0
-PORT=8000
-LOG_LEVEL=INFO
-
-# CORS (update with your Netlify domain)
-CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-
-# Optional: Push Notifications
-FIREBASE_KEY=your_firebase_key
+```bash
+git remote add origin https://github.com/YOUR_USERNAME/westbank-alerts.git
+git branch -M main
+git push -u origin main
 ```
 
-### Step 4: Deploy
+### Step 2: Set up Fly.io backend
 
-1. Click "Create Web Service"
-2. Render will start deployment
-3. View logs in Render dashboard
-4. Once deployed, get the service URL: `https://westbank-api.onrender.com`
+#### 2a. Install flyctl
 
-### Step 5: Initialize Telegram Session
+```bash
+# Linux/Mac
+curl -L https://fly.io/install.sh | sh
 
-For first-time deployment, you need an active Telegram session:
+# Or via Homebrew (Mac)
+brew install flyctl
 
-1. Open Render → Logs
-2. Look for: `Session file not found. Please authenticate...`
-3. Cannot do interactive login in hosted environment
-4. **Solution:** Generate session locally first
+# Windows
+pwsh -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://fly.io/install.ps1'))"
+```
 
-**Generate Session Locally:**
+#### 2b. Sign in / Create free account
+
+```bash
+flyctl auth signup    # new account
+# OR
+flyctl auth login     # existing account
+```
+
+Go to https://fly.io — free account, no credit card required.
+
+#### 2c. Create the Fly.io app
 
 ```bash
 cd backend
-python3 << 'EOF'
-from telethon.sync import TelegramClient
 
-api_id = YOUR_API_ID
-api_hash = "YOUR_API_HASH"
-phone = "+1234567890"
+# Create the app (choose a unique name, e.g. wb-alerts-api-zaid)
+flyctl apps create wb-alerts-api
 
-with TelegramClient('wb_alerts', api_id, api_hash) as client:
-    print("Session authenticated!")
-EOF
+# Create persistent volume (1GB, stores SQLite + session)
+flyctl volumes create wb_data --size 1 --region ams
 ```
 
-This creates `backend/session/wb_alerts.session`. Then:
+> If `wb-alerts-api` is taken, pick a unique name and update `app = "..."` in `backend/fly.toml`.
 
-1. Copy the session file to Render via:
-   - Render Shell (if available): Upload via web UI
-   - Or commit to repo in `.gitignored` path and load at startup
+#### 2d. Generate Telegram StringSession
 
-**Recommended: Store Session in Render's Persistent Disk**
-
-1. In Render → Service Settings → Persistent Disk
-2. Add disk at `/app/session` with 1GB size
-3. Deploy with session file included
-4. Render will persist it across restarts
-
-### Step 6: Verify Deployment
+This is required because Fly.io containers can't do interactive Telegram login.
+Run this **once locally**:
 
 ```bash
-# Test API
-curl https://westbank-api.onrender.com/incidents
-
-# Check logs
-# In Render UI → Logs tab
+cd backend
+python generate_session.py
 ```
 
-## Backend Deployment (Railway Alternative)
+You'll be prompted to log in with your Telegram account. The script outputs a
+long session string. Copy it — you'll need it in the next step.
 
-If using Railway instead of Render:
+> The session string authenticates your account. Treat it like a password.
+> Never commit it to git.
 
-### Step 1: Connect GitHub
-
-1. Go to https://railway.app
-2. Create new project → GitHub
-3. Select repository
-
-### Step 2: Configure
-
-1. Add environment variables (same as Render)
-2. Set start command:
-   ```
-   cd backend && pip install -r requirements.txt && gunicorn -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT app.main:app
-   ```
-
-### Step 3: Deploy
-
-1. Railway auto-detects Python and deploys
-2. View logs in Railway dashboard
-3. Public URL auto-generated
-
-## Post-Deployment Setup
-
-### Step 1: Update Frontend Environment
-
-1. Get backend domain: `https://westbank-api.onrender.com` (or Railway URL)
-2. In Netlify → Site Settings → Environment:
-   - `VITE_API_URL=https://westbank-api.onrender.com`
-   - `VITE_API_WSS_URL=wss://westbank-api.onrender.com`
-3. Trigger redeployment
-
-### Step 2: Test Real-time Connection
-
-1. Open deployed frontend in browser
-2. Open DevTools → Network tab
-3. Filter for "WS" (WebSocket)
-4. Should see WebSocket connection to backend
-5. If connection fails, check CORS_ORIGINS in backend
-
-### Step 3: Verify All Features
-
-- [ ] Home screen loads with map
-- [ ] Alerts tab shows incidents
-- [ ] Checkpoints display with status colors
-- [ ] Routes screen loads with 15 routes
-- [ ] Real-time updates appear (check WebSocket in DevTools)
-- [ ] Push notifications can be enabled
-- [ ] Onboarding appears for first-time users
-- [ ] App can be installed as PWA
-
-### Step 4: Set Up Monitoring
-
-**Render:**
-- Enable error notifications: Service → Settings → Alerts
-- View logs: Service → Logs (tail in real-time)
-
-**Netlify:**
-- Enable build notifications: Site → Build & Deploy → Notifications
-- View deployment logs: Deploys → [Deployment] → View Log
-
-## Upgrading Backend Storage
-
-Default setup uses SQLite. For production scale, consider PostgreSQL:
-
-### Option 1: Render PostgreSQL Add-on
-
-1. Render Service → Add-on → PostgreSQL
-2. Automatic connection string: `DATABASE_URL`
-3. Update `backend/app/database.py`:
-   ```python
-   import os
-   DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./alerts.db")
-   # Change engine initialization to support PostgreSQL
-   ```
-
-### Option 2: Managed PostgreSQL
-
-1. Use managed service: AWS RDS, Render, Railway, etc.
-2. Get connection string
-3. Set as `DATABASE_URL` environment variable
-4. Update database driver: `pip install psycopg2`
-
-### Migration from SQLite
+#### 2e. Set secrets in Fly.io
 
 ```bash
-# Export SQLite data
-sqlite3 backend/data/alerts.db ".dump" > dump.sql
-
-# Load into PostgreSQL
-psql -U user -d database < dump.sql
+flyctl secrets set \
+  TELEGRAM_API_ID="your_api_id" \
+  TELEGRAM_API_HASH="your_api_hash" \
+  TELEGRAM_PHONE="+970XXXXXXXXX" \
+  TELEGRAM_SESSION_STRING="paste_session_string_here" \
+  TELEGRAM_CHANNELS="QudsN,wafanews,palinfo" \
+  CHECKPOINT_CHANNELS="your_checkpoint_channel" \
+  API_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
+  CORS_ORIGINS="https://your-netlify-url.netlify.app"
 ```
 
-## Scaling Considerations
+> Run this from the `backend/` directory, or add `--app wb-alerts-api`.
 
-### Frontend
+#### 2f. Deploy backend manually (first time)
 
-- Netlify free tier: unlimited deployments, 100GB/month bandwidth
-- Custom domain: $12/month
-- No additional scaling needed for typical traffic
+```bash
+cd backend
+flyctl deploy
+```
+
+Wait for the deployment to complete. Verify it's running:
+
+```bash
+curl https://wb-alerts-api.fly.dev/health
+# → {"status": "healthy"}
+```
+
+Your backend is now live 24/7 at `https://wb-alerts-api.fly.dev`.
+
+#### 2g. Add FLY_API_TOKEN to GitHub Secrets
+
+So GitHub Actions can deploy automatically on every push:
+
+```bash
+# Get your Fly.io token
+flyctl tokens create deploy -x 999999h
+```
+
+Copy the token, then add it to your GitHub repo:
+
+GitHub → Settings → Secrets and variables → Actions → New repository secret:
+- Name: `FLY_API_TOKEN`
+- Value: paste the token
+
+### Step 3: Set up Netlify frontend
+
+#### Option A: Auto-deploy via GitHub (recommended)
+
+1. Go to https://netlify.com → "Add new site" → "Import from Git"
+2. Connect GitHub, select this repository
+3. Build settings:
+   - Base directory: `frontend`
+   - Build command: `npm install && npm run build`
+   - Publish directory: `frontend/dist`
+4. Add environment variables:
+   - `VITE_API_URL` = `https://wb-alerts-api.fly.dev`
+   - `VITE_API_WSS_URL` = `wss://wb-alerts-api.fly.dev`
+5. Deploy
+
+#### Option B: GitHub Actions deploy (more control)
+
+Add these secrets to your GitHub repo:
+- `NETLIFY_AUTH_TOKEN` — from Netlify User Settings → Personal access tokens
+- `NETLIFY_SITE_ID` — from Netlify Site Configuration → Site ID
+- `VITE_API_URL` = `https://wb-alerts-api.fly.dev`
+- `VITE_API_WSS_URL` = `wss://wb-alerts-api.fly.dev`
+
+GitHub Actions (`.github/workflows/deploy-frontend.yml`) handles the rest.
+
+---
+
+## Updating the Deployment
+
+After setup, **all you do is push to `main`**:
+
+```bash
+git add .
+git commit -m "your changes"
+git push
+```
+
+- Changes to `backend/` → triggers backend deploy to Fly.io
+- Changes to `frontend/` → triggers frontend deploy to Netlify
+- Both workflows run independently and in parallel
+
+---
+
+## Configuration Changes
+
+### Change backend environment variable
+
+```bash
+flyctl secrets set CORS_ORIGINS="https://newdomain.com"
+# Fly.io auto-restarts the backend with the new value
+```
+
+### Change frontend API URL
+
+Update in Netlify dashboard:
+Site Settings → Environment Variables → `VITE_API_URL`
+Then trigger a redeploy (Deploys → Trigger deploy).
+
+### Add a new Telegram channel
+
+```bash
+flyctl secrets set TELEGRAM_CHANNELS="QudsN,wafanews,newchannel"
+```
+
+---
+
+## Free Tier Limits
+
+| Platform | Free Tier | Limits |
+|----------|-----------|--------|
+| Fly.io | 3 shared VMs, 160GB egress/month | 256MB RAM, 1 CPU core shared |
+| Netlify | 100GB bandwidth/month | 300 build minutes/month |
+| GitHub Actions | 2000 min/month (public repo: unlimited) | 6h per job |
+
+**For this app:**
+- Backend uses ~1 VM, ~100-150MB RAM → well within free limits
+- Frontend builds take ~1-2 minutes → well within limits
+- Bandwidth: likely <5GB/month for normal usage
+
+### Staying on free tier
+
+- Do not add more than 1 backend replica
+- Keep the frontend build size under ~5MB (already under 2MB)
+- Monitor with `flyctl status` and Netlify analytics
+
+---
+
+## Monitoring
 
 ### Backend
 
-**Starter Plan Issues:**
-- Spins down after 15 min inactivity (cold start delay)
-- Limited to 1 worker
-
-**Solutions:**
-1. **Render Standard Plan:** $12/month, always-on, dedicated instance
-2. **Keep-Alive Service:** Ping backend every 14 minutes to prevent sleep
-3. **Upgrade Worker Count:** In Render settings, increase to 2-4 workers
-
-**Keep-Alive Cron Job:**
-
 ```bash
-# Create a background job in Render
-# Every 14 minutes, call /health
-curl -X GET https://westbank-api.onrender.com/health
+# View live logs
+flyctl logs
+
+# Check app status
+flyctl status
+
+# Check machine health
+flyctl machine list
+
+# SSH into the container (debugging)
+flyctl ssh console
 ```
 
-Or use: https://kaffeine.herokuapp.com (registers your URL)
+### Frontend
 
-### Database
+Netlify dashboard → Deploys (shows all deployments and build logs)
 
-If seeing slow queries:
-1. Monitor in Render logs
-2. Consider indexes on frequently filtered columns
-3. Pagination: `/incidents?limit=20&offset=0`
-
-## Security Checklist
-
-- [ ] Backend `CORS_ORIGINS` set to your Netlify domain only
-- [ ] API keys (Telegram, Firebase) stored in environment variables, not committed
-- [ ] `.env` file is in `.gitignore`
-- [ ] HTTPS enabled (both Netlify and Render auto-enable)
-- [ ] Session file not committed to repository
-- [ ] Database backups enabled (Render auto-backups)
-- [ ] Log level set to `INFO` in production (not `DEBUG`)
-
-## Monitoring & Alerts
-
-### Key Metrics to Monitor
-
-1. **WebSocket Connections:** Check in backend logs for "Connection closed"
-2. **API Response Times:** Monitor in Render logs
-3. **Database Size:** SQLite should stay under 100MB
-4. **Telegram Authentication:** Errors in logs = session expired
-
-### Enable Render Alerts
-
-1. Service → Settings → Alerts
-2. Set on: CPU >80%, Memory >80%, Build failures
-3. Get notifications via Slack or email
-
-### Debugging Production Issues
-
-**Frontend not loading:**
-1. Check Netlify build logs
-2. Verify `VITE_API_URL` is set correctly
-3. Check browser console for errors
-
-**No real-time updates:**
-1. Check WebSocket connection in DevTools Network tab
-2. Look for CORS errors
-3. Verify `wss://` protocol (HTTPS → WebSocket Secure)
-
-**Backend errors:**
-1. `LOG_LEVEL=DEBUG` in environment
-2. Restart service to apply
-3. View expanded logs in Render
-4. Check for Telegram API errors: connection, rate limits
-
-**Session expired:**
-1. Generate new session locally (see above)
-2. Upload to Render persistent disk
-3. Restart service
-
-## Costs Estimation (Monthly)
-
-| Component | Plan | Cost |
-|-----------|------|------|
-| Netlify Frontend | Starter (free) | $0 |
-| Netlify Domain | Custom domain | $12 |
-| Render Backend | Starter | $7 |
-| Render PostgreSQL | Optional | $15 |
-| **Total** | | **$34/month** |
-
-*Starter backend has slow cold starts. Upgrade to Standard ($12) for better performance.*
-
-## Rollback & Recovery
-
-### Frontend (Netlify)
-
-1. Go to Deploys tab
-2. Click on previous deployment
-3. "Publish deploy"
-4. Automatic rollback to previous version
-
-### Backend (Render)
-
-1. Go to Logs
-2. Find last known working deployment
-3. Service → Settings → Restart
-4. Or revert commit and re-push to trigger new deployment
-
-## Useful Commands
+### API health check
 
 ```bash
-# Test backend health
-curl https://westbank-api.onrender.com/health
-
-# Check API with filter
-curl "https://westbank-api.onrender.com/incidents?category=missiles"
-
-# View backend logs (if using render CLI)
-render logs -s westbank-api
-
-# Test WebSocket connection
-wscat -c wss://westbank-api.onrender.com/ws
+curl https://wb-alerts-api.fly.dev/health
+curl https://wb-alerts-api.fly.dev/incidents?limit=5
 ```
 
-## Next Steps
+---
 
-1. Deploy frontend to Netlify
-2. Deploy backend to Render
-3. Generate/upload Telegram session
-4. Update environment variables in both
-5. Test real-time connections
-6. Monitor logs for errors
-7. Share deployed URL with users
+## Troubleshooting
+
+### Backend is not running
+
+```bash
+flyctl status           # see current machines
+flyctl logs             # see startup errors
+flyctl machine restart  # restart the machine
+```
+
+### "Session expired" error in logs
+
+The Telegram session string needs to be regenerated:
+
+```bash
+# Run locally
+cd backend
+python generate_session.py
+
+# Copy new string and update Fly.io secret
+flyctl secrets set TELEGRAM_SESSION_STRING="new_string_here"
+```
+
+### CORS error in browser
+
+Update the `CORS_ORIGINS` secret to include your frontend domain:
+
+```bash
+flyctl secrets set CORS_ORIGINS="https://yourapp.netlify.app"
+```
+
+### Fly.io deploy fails in GitHub Actions
+
+- Check `FLY_API_TOKEN` is set in GitHub Secrets
+- Run `flyctl deploy` locally to see the full error
+- Check `flyctl status` to see current app state
+
+### Frontend build fails
+
+Check the GitHub Actions log:
+GitHub → Actions → "Deploy Frontend to Netlify" → click the failed run
+
+---
+
+## Scaling Up (if needed)
+
+### Backend: more RAM
+
+```bash
+# Upgrade to 512MB (still free tier)
+flyctl machine update --memory 512
+```
+
+### Backend: upgrade VM
+
+```bash
+# Upgrade to dedicated CPU (paid, ~$7/month)
+flyctl scale vm shared-cpu-1x
+```
+
+### Backend: PostgreSQL (if SQLite is too slow)
+
+1. Add Fly.io Postgres: `flyctl postgres create`
+2. Set `DATABASE_URL` secret
+3. Update `database.py` to use asyncpg driver
+
+---
+
+## Rollback
+
+### Backend rollback
+
+```bash
+# List previous releases
+flyctl releases list
+
+# Roll back to specific version
+flyctl deploy --image <previous-image-id>
+```
+
+### Frontend rollback
+
+Netlify dashboard → Deploys → click any previous deploy → "Publish deploy"
+
+---
+
+## Domain Setup (optional)
+
+### Custom domain for frontend
+
+1. Netlify → Domain management → Add custom domain
+2. Update DNS at your registrar to point to Netlify
+3. SSL auto-provisioned
+
+### Custom domain for backend
+
+```bash
+# Add domain
+flyctl certs add api.yourdomain.com
+
+# Get DNS instructions
+flyctl certs show api.yourdomain.com
+
+# Update CORS_ORIGINS to new domain
+flyctl secrets set CORS_ORIGINS="https://yourdomain.com"
+```

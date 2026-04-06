@@ -8,12 +8,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
-COPY dashboard.html ./dashboard.html
-COPY data/known_checkpoints.json ./data/known_checkpoints.json
-COPY data/checkpoint_directory.json ./data/checkpoint_directory.json
-COPY seed_checkpoints.py ./seed_checkpoints.py
 
-# Force rebuild when source files change
-RUN find ./app -name "*.py" -newer /app/app/main.py -exec echo "Files updated" \; || true
+# Copy static data files if they exist
+COPY data/known_checkpoints.json ./data/known_checkpoints.json 2>/dev/null || true
+COPY data/checkpoint_directory.json ./data/checkpoint_directory.json 2>/dev/null || true
+
+# Create runtime directories (will be overridden by fly.io volume mount for /data)
+RUN mkdir -p /data /data/session
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

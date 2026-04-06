@@ -37,7 +37,18 @@ westbank-full-stack/
 └── README.md               # This file
 ```
 
-## Quick Start
+## Deployment (TL;DR)
+
+Push to `main` branch — both services deploy automatically:
+
+- **Frontend** → Netlify (free, CDN)
+- **Backend** → Fly.io (free, always-on, no cold starts)
+
+See `DEPLOYMENT.md` for one-time initial setup (~15 minutes).
+
+---
+
+## Quick Start (Local Development)
 
 ### Prerequisites
 
